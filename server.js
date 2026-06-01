@@ -3,10 +3,14 @@
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
+const http = require('http');
+const { WebSocketServer } = require('ws');
+const { EventEmitter } = require('events');
 
 const exeDir = process.pkg ? path.dirname(process.execPath) : __dirname;
 const CONFIG_FILE = path.join(exeDir, 'config.json');
 const USERS_FILE = path.join(exeDir, 'users.json');
+const publicDir = path.join(exeDir, 'public');
 const config = loadConfig();
 const clients = [];
 const users = loadUsers();
@@ -17,7 +21,9 @@ function loadConfig() {
         serverPort: 5190,
         serverHost: '0.0.0.0',
         clientHost: 'placeholder',
-        clientPort: 5190
+        clientPort: 5190,
+        webPort: 8080,
+        webHost: '0.0.0.0'
     };
 
     try {
@@ -27,7 +33,9 @@ function loadConfig() {
             serverPort: Number(parsed.serverPort) || defaults.serverPort,
             serverHost: parsed.serverHost || defaults.serverHost,
             clientHost: parsed.clientHost || defaults.clientHost,
-            clientPort: Number(parsed.clientPort) || defaults.clientPort
+            clientPort: Number(parsed.clientPort) || defaults.clientPort,
+            webPort: Number(parsed.webPort) || defaults.webPort,
+            webHost: parsed.webHost || defaults.webHost
         };
     } catch (err) {
         if (err.code !== 'ENOENT') {
@@ -87,7 +95,9 @@ function saveUsers(data = users) {
     }
 }
 
-const server = net.createServer((socket) => {
+const server = net.createServer(handleChatConnection);
+
+function handleChatConnection(socket) {
     let username = null;
     let dmSession = null;
     let groupSession = null;
@@ -101,7 +111,11 @@ const server = net.createServer((socket) => {
     socket.write('Welcome! Register with: REGISTER username password\n');
     socket.write('Or login with: AUTH username password\n');
 
-    socket.on('data', (data) => {
+    if (typeof socket.on === 'function' && typeof socket.emit === 'function') {
+        // No-op, TCP sockets already support event emitters.
+    }
+
+    const onData = (data) => {
         const message = data.toString().trim();
 
         if (!username) {
@@ -380,8 +394,16 @@ const server = net.createServer((socket) => {
                 groupSession = null;
                 socket.dmSession = member;
                 socket.groupSession = null;
-                socket.write(`DMMODE ${member}\n`);
-                flushPendingDMs(member);
+                
+                // Build complete response with notification first, then pending messages
+                let response = `DMMODE ${member}\n`;
+                const pending = socket.pendingDMs[member];
+                if (pending && pending.length) {
+                    pending.forEach(msg => response += msg);
+                    delete socket.pendingDMs[member];
+                }
+                socket.write(response);
+                
                 if (loggedInUsers.has(member)) loggedInUsers.get(member).write(`NOTIFY: ${username} opened a saved DM with you.\n`);
                 return;
             }
@@ -396,8 +418,17 @@ const server = net.createServer((socket) => {
                 dmSession = null;
                 socket.groupSession = members;
                 socket.dmSession = null;
-                socket.write(`GROUPMODE ${members.filter(u=>u!==username).join(', ')}\n`);
-                flushPendingGroupMessages(members);
+                
+                // Build complete response with notification first, then pending messages
+                const key = groupKey(members);
+                let response = `GROUPMODE ${members.filter(u=>u!==username).join(', ')}\n`;
+                const pendingMsgs = socket.pendingGroupMsgs.get(key);
+                if (pendingMsgs && pendingMsgs.length) {
+                    pendingMsgs.forEach(msg => response += msg);
+                    socket.pendingGroupMsgs.delete(key);
+                }
+                socket.write(response);
+                
                 members.forEach(member => {
                     if (member !== username && loggedInUsers.has(member)) {
                         const recipientSocket = loggedInUsers.get(member);
@@ -446,8 +477,16 @@ const server = net.createServer((socket) => {
             groupSession = null;
             socket.dmSession = recipientName;
             socket.groupSession = null;
-            socket.write(`DMMODE ${recipientName}\n`);
-            flushPendingDMs(recipientName);
+            
+            // Build complete response with notification first, then pending messages
+            let response = `DMMODE ${recipientName}\n`;
+            const pending = socket.pendingDMs[recipientName];
+            if (pending && pending.length) {
+                pending.forEach(msg => response += msg);
+                delete socket.pendingDMs[recipientName];
+            }
+            socket.write(response);
+            
             if (loggedInUsers.has(recipientName)) {
                 loggedInUsers.get(recipientName).write(`NOTIFY: ${username} opened a DM with you.\n`);
             }
@@ -512,8 +551,16 @@ const server = net.createServer((socket) => {
             socket.groupSession = members;
             socket.dmSession = null;
             socket.pendingGroupInvite = null;
-            socket.write(`GROUPMODE ${members.filter(u => u !== username).join(', ')}\n`);
-            flushPendingGroupMessages(members);
+            
+            // Build complete response with notification first, then pending messages
+            const key = groupKey(members);
+            let response = `GROUPMODE ${members.filter(u => u !== username).join(', ')}\n`;
+            const pending = socket.pendingGroupMsgs.get(key);
+            if (pending && pending.length) {
+                pending.forEach(msg => response += msg);
+                socket.pendingGroupMsgs.delete(key);
+            }
+            socket.write(response);
             return;
         }
 
@@ -544,8 +591,17 @@ const server = net.createServer((socket) => {
             socket.groupSession = uniqueMembers;
             socket.dmSession = null;
             const groupStr = parts.join(', ');
-            socket.write(`GROUPMODE ${groupStr}\n`);
-            flushPendingGroupMessages(uniqueMembers);
+            
+            // Build complete response with notification first, then pending messages
+            const key = groupKey(uniqueMembers);
+            let response = `GROUPMODE ${groupStr}\n`;
+            const pending = socket.pendingGroupMsgs.get(key);
+            if (pending && pending.length) {
+                pending.forEach(msg => response += msg);
+                socket.pendingGroupMsgs.delete(key);
+            }
+            socket.write(response);
+            
             parts.forEach(member => {
                 if (loggedInUsers.has(member)) {
                     const recipientSocket = loggedInUsers.get(member);
@@ -613,7 +669,9 @@ const server = net.createServer((socket) => {
                 client.write(`${username}: ${message}\n`);
             }
         });
-    });
+    };
+
+    socket.on('data', onData);
 
     socket.on('end', () => {
         console.log('Client disconnected');
@@ -659,6 +717,92 @@ const server = net.createServer((socket) => {
             console.log(`User logged out: ${username}`);
         }
     }
+}
+
+function createWebSocketWrapper(ws) {
+    const socket = new EventEmitter();
+    socket.dmSession = null;
+    socket.groupSession = null;
+    socket.pendingDMs = {};
+    socket.pendingGroupMsgs = new Map();
+    socket.pendingGroupInvite = null;
+
+    socket.write = (msg) => {
+        if (ws.readyState === ws.OPEN) {
+            ws.send(typeof msg === 'string' ? msg : String(msg));
+        }
+    };
+
+    socket.end = () => ws.close();
+    socket.destroy = () => ws.close();
+
+    ws.on('message', (data) => {
+        const payload = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data);
+        socket.emit('data', payload);
+    });
+
+    ws.on('close', () => socket.emit('close'));
+    ws.on('error', (err) => socket.emit('error', err));
+
+    return socket;
+}
+
+const httpServer = http.createServer((req, res) => {
+    const safeUrl = decodeURIComponent(new URL(req.url, `http://${req.headers.host}`).pathname);
+    const requestPath = safeUrl === '/' ? '/index.html' : safeUrl;
+    const filePath = path.join(publicDir, requestPath);
+
+    if (!filePath.startsWith(publicDir)) {
+        res.statusCode = 403;
+        res.end('Forbidden');
+        return;
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+        '.html': 'text/html',
+        '.js': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png'
+    };
+
+    fs.readFile(filePath, (err, data) => {
+        if (err) {
+            if (err.code === 'ENOENT') {
+                res.statusCode = 404;
+                res.end('Not found');
+                return;
+            }
+            res.statusCode = 500;
+            res.end('Server error');
+            return;
+        }
+        res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+        res.end(data);
+    });
+});
+
+httpServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${config.webPort} is already in use. Close the existing browser server or change webPort in config.json.`);
+        process.exit(1);
+    }
+    console.error('HTTP server error:', err.message);
+    process.exit(1);
+});
+
+const wss = new WebSocketServer({ server: httpServer });
+
+wss.on('connection', (ws) => {
+    const socket = createWebSocketWrapper(ws);
+    handleChatConnection(socket);
+});
+
+httpServer.listen(config.webPort, config.webHost, () => {
+    const host = config.webHost === '0.0.0.0' ? 'localhost' : config.webHost;
+    console.log(`Browser client available at http://${host}:${config.webPort}`);
 });
 
 server.listen(config.serverPort, config.serverHost, () => {

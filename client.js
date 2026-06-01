@@ -58,8 +58,154 @@ let chatStarted = false;
 let currentUser = null;
 let currentDMUser = null;
 
-client.on('data', (data) => {
-    const message = data.toString().trim();
+function setupReadlineListener() {
+    rl.on('line', (line) => {
+        const trimmed = line.trim();
+        if (trimmed) {
+            const command = trimmed.toLowerCase();
+            if (command === '/users' || command === '/who' || command === '/online' || command === '/list') {
+                client.write('GETUSERS\n');
+            } else if (command === '/help') {
+                console.log('Commands: /users, /who, /online, /list - view online users.');
+                console.log('Commands: /friend <username>, /requests, /accept <username>, /reject <username>, /unfriend <username>, /friends - manage your friends.');
+                console.log('Commands: /dm <username> - open a direct message session with a friend.');
+                console.log('Commands: /group <username1> <username2> ... - start a group chat with friends.');
+                console.log('Commands: /joingroup - enter the latest group chat you were invited to.');
+                console.log('Commands: /sessions - view your open DM or group chat session.');
+                console.log('Commands: /savesession - save the current DM/group session');
+                console.log('Commands: /saved - list your saved sessions');
+                console.log('Commands: /open <n> - open a saved session by number');
+                console.log('Commands: /deletesaved <n> - delete a saved session by number');
+                console.log('Commands: /exit or /back - close the DM/group and return to public chat.');
+                console.log('Once in DM/group mode, type messages normally to send them only to those users.');
+                console.log('Type any other text to send a chat message.');
+            } else if (command === '/sessions') {
+                client.write('SESSIONS\n');
+            } else if (command === '/savesession') {
+                client.write('SAVESESSION\n');
+            } else if (command === '/saved') {
+                client.write('LISTSAVED\n');
+            } else if (command.startsWith('/open ')) {
+                const num = trimmed.slice(6).trim();
+                if (!num || isNaN(Number(num))) {
+                    console.log('Usage: /open <saved-session-number>');
+                } else {
+                    client.write(`OPENSESSION ${num}\n`);
+                }
+            } else if (command.startsWith('/deletesaved ')) {
+                const num = trimmed.slice(13).trim();
+                if (!num || isNaN(Number(num))) {
+                    console.log('Usage: /deletesaved <saved-session-number>');
+                } else {
+                    client.write(`DELETESESSION ${num}\n`);
+                }
+            } else if (command === '/exit' || command === '/back' || command === '/exitdm') {
+                client.write('EXIT\n');
+                currentDMUser = null;
+            } else if (command.startsWith('/group ')) {
+                const groupContent = trimmed.slice(7).trim();
+                if (!groupContent) {
+                    console.log('Usage: /group username1 username2 ...');
+                } else {
+                    const members = groupContent.split(' ').join(' ');
+                    currentDMUser = `group: ${members}`;
+                    client.write(`GROUP ${members}\n`);
+                }
+            } else if (command === '/joingroup') {
+                client.write('JOINLAST\n');
+            } else if (command.startsWith('/dm ')) {
+                const dmContent = trimmed.slice(4).trim();
+                const parts = dmContent.split(' ').filter(p => p);
+                if (parts.length !== 1) {
+                    console.log('Usage: /dm username');
+                } else {
+                    currentDMUser = parts[0];
+                    client.write(`DM ${parts[0]}\n`);
+                }
+            } else if (command.startsWith('/friend ')) {
+                const friendName = trimmed.slice(8).trim();
+                if (!friendName) {
+                    console.log('Usage: /friend username');
+                } else {
+                    client.write(`FRIEND ${friendName}\n`);
+                }
+            } else if (command === '/requests') {
+                client.write('REQUESTS\n');
+            } else if (command.startsWith('/accept ')) {
+                const friendName = trimmed.slice(8).trim();
+                if (!friendName) {
+                    console.log('Usage: /accept username');
+                } else {
+                    client.write(`ACCEPT ${friendName}\n`);
+                }
+            } else if (command.startsWith('/reject ')) {
+                const friendName = trimmed.slice(8).trim();
+                if (!friendName) {
+                    console.log('Usage: /reject username');
+                } else {
+                    client.write(`REJECT ${friendName}\n`);
+                }
+            } else if (command === '/friend' || command === '/friendlist' || command === '/friends') {
+                client.write('FRIENDS\n');
+            } else if (command.startsWith('/unfriend ')) {
+                const friendName = trimmed.slice(10).trim();
+                if (!friendName) {
+                    console.log('Usage: /unfriend username');
+                } else {
+                    client.write(`UNFRIEND ${friendName}\n`);
+                }
+            } else if (command === '/unfriend') {
+                console.log('Usage: /unfriend username');
+            } else if (trimmed.startsWith('/')) {
+                console.log('Unknown command. Try /users, /who, /online, /list, /friend, /unfriend, /friends, /dm, /exit, or /help.');
+            } else {
+                readline.clearLine(process.stdout, 0);
+                readline.cursorTo(process.stdout, 0);
+                if (currentDMUser) {
+                    if (currentDMUser.startsWith('group:')) {
+                        console.log(`GROUP You: ${trimmed}`);
+                        client.write(`GROUP_MESSAGE ${trimmed}\n`);
+                    } else {
+                        console.log(`DM You -> ${currentDMUser}: ${trimmed}`);
+                        client.write(`DMMSG ${trimmed}\n`);
+                    }
+                } else {
+                    console.log(`You: ${trimmed}`);
+                    client.write(trimmed + '\n');
+                }
+            }
+        }
+        rl.prompt();
+    });
+    rl.setPrompt('> ');
+    rl.prompt();
+}
+
+function processMessage(message) {
+    if (!message || !message.length) return;
+
+    if (!authenticated && message.startsWith('OK Welcome')) {
+        authenticated = true;
+        currentUser = message.split(' ')[2].replace('!', '');
+        console.log('Login successful. Start typing messages.');
+        if (!chatStarted) {
+            chatStarted = true;
+            setupReadlineListener();
+        }
+        return;
+    }
+
+    if (!authenticated && message.startsWith('OK Registered')) {
+        console.log('Account created. Please log in now.');
+        askAuthOrRegister();
+        return;
+    }
+
+    if (!authenticated && message.startsWith('ERROR')) {
+        console.log('Server error:', message);
+        askAuthOrRegister();
+        return;
+    }
 
     if (message.startsWith('USERS ')) {
         console.log('Online users:', message.slice(6));
@@ -158,7 +304,6 @@ client.on('data', (data) => {
     }
 
     if (message.startsWith('DM ')) {
-
         console.log(message.slice(3));
         return;
     }
@@ -168,153 +313,18 @@ client.on('data', (data) => {
         return;
     }
 
-    if (message.startsWith('User List:') || message.startsWith('Friend Management:') || message.startsWith('Direct Messages:') || message.startsWith('Help:')) {
+    if (message.startsWith('User List:') || message.startsWith('Friend Management:') || message.startsWith('Direct Messages:') || message.startsWith('Help:') || message.startsWith('Sessions:') || message.startsWith('Group Chat:')) {
         console.log(message);
         return;
     }
 
     console.log(message);
+}
 
-    if (!authenticated && message.startsWith('OK Welcome')) {
-
-        authenticated = true;
-        currentUser = message.split(' ')[2].replace('!', '');
-        console.log('Login successful. Start typing messages.');
-
-        if (!chatStarted) {
-            chatStarted = true;
-            rl.on('line', (line) => {
-                const trimmed = line.trim();
-                if (trimmed) {
-                    const command = trimmed.toLowerCase();
-                    if (command === '/users' || command === '/who' || command === '/online' || command === '/list') {
-                        client.write('GETUSERS\n');
-                    } else if (command === '/help') {
-                        console.log('Commands: /users, /who, /online, /list - view online users.');
-                        console.log('Commands: /friend <username>, /requests, /accept <username>, /reject <username>, /unfriend <username>, /friends - manage your friends.');
-                        console.log('Commands: /dm <username> - open a direct message session with a friend.');
-                        console.log('Commands: /group <username1> <username2> ... - start a group chat with friends.');
-                        console.log('Commands: /joingroup - enter the latest group chat you were invited to.');
-                        console.log('Commands: /sessions - view your open DM or group chat session.');
-                        console.log('Commands: /savesession - save the current DM/group session');
-                        console.log('Commands: /saved - list your saved sessions');
-                        console.log('Commands: /open <n> - open a saved session by number');
-                        console.log('Commands: /deletesaved <n> - delete a saved session by number');
-                        console.log('Commands: /exit or /back - close the DM/group and return to public chat.');
-                        console.log('Once in DM/group mode, type messages normally to send them only to those users.');
-                        console.log('Type any other text to send a chat message.');
-                    } else if (command === '/sessions') {
-                        client.write('SESSIONS\n');
-                    } else if (command === '/savesession') {
-                        client.write('SAVESESSION\n');
-                    } else if (command === '/saved') {
-                        client.write('LISTSAVED\n');
-                    } else if (command.startsWith('/open ')) {
-                        const num = trimmed.slice(6).trim();
-                        if (!num || isNaN(Number(num))) {
-                            console.log('Usage: /open <saved-session-number>');
-                        } else {
-                            client.write(`OPENSESSION ${num}\n`);
-                        }
-                    } else if (command.startsWith('/deletesaved ')) {
-                        const num = trimmed.slice(13).trim();
-                        if (!num || isNaN(Number(num))) {
-                            console.log('Usage: /deletesaved <saved-session-number>');
-                        } else {
-                            client.write(`DELETESESSION ${num}\n`);
-                        }
-                    } else if (command === '/exit' || command === '/back' || command === '/exitdm') {
-                        client.write('EXIT\n');
-                        currentDMUser = null;
-                    } else if (command.startsWith('/group ')) {
-                        const groupContent = trimmed.slice(7).trim();
-                        if (!groupContent) {
-                            console.log('Usage: /group username1 username2 ...');
-                        } else {
-                            const members = groupContent.split(' ').join(' ');
-                            currentDMUser = `group: ${members}`;
-                            client.write(`GROUP ${members}\n`);
-                        }
-                    } else if (command === '/joingroup') {
-                        client.write('JOINLAST\n');
-                    } else if (command.startsWith('/dm ')) {
-                        const dmContent = trimmed.slice(4).trim();
-                        const parts = dmContent.split(' ').filter(p => p);
-                        if (parts.length !== 1) {
-                            console.log('Usage: /dm username');
-                        } else {
-                            currentDMUser = parts[0];
-                            client.write(`DM ${parts[0]}\n`);
-                        }
-                    } else if (command.startsWith('/friend ')) {
-                        const friendName = trimmed.slice(8).trim();
-                        if (!friendName) {
-                            console.log('Usage: /friend username');
-                        } else {
-                            client.write(`FRIEND ${friendName}\n`);
-                        }
-                    } else if (command === '/requests') {
-                        client.write('REQUESTS\n');
-                    } else if (command.startsWith('/accept ')) {
-                        const friendName = trimmed.slice(8).trim();
-                        if (!friendName) {
-                            console.log('Usage: /accept username');
-                        } else {
-                            client.write(`ACCEPT ${friendName}\n`);
-                        }
-                    } else if (command.startsWith('/reject ')) {
-                        const friendName = trimmed.slice(8).trim();
-                        if (!friendName) {
-                            console.log('Usage: /reject username');
-                        } else {
-                            client.write(`REJECT ${friendName}\n`);
-                        }
-                    } else if (command === '/friend' || command === '/friendlist' || command === '/friends') {
-                        client.write('FRIENDS\n');
-                    } else if (command.startsWith('/unfriend ')) {
-                        const friendName = trimmed.slice(10).trim();
-                        if (!friendName) {
-                            console.log('Usage: /unfriend username');
-                        } else {
-                            client.write(`UNFRIEND ${friendName}\n`);
-                        }
-                    } else if (command === '/unfriend') {
-                        console.log('Usage: /unfriend username');
-                    } else if (trimmed.startsWith('/')) {
-                        console.log('Unknown command. Try /users, /who, /online, /list, /friend, /unfriend, /friends, /dm, /exit, or /help.');
-                    } else {
-                        readline.clearLine(process.stdout, 0);
-                        readline.cursorTo(process.stdout, 0);
-                        if (currentDMUser) {
-                            if (currentDMUser.startsWith('group:')) {
-                                console.log(`GROUP ${currentUser}: ${trimmed}`);
-                                client.write(`GROUP_MESSAGE ${trimmed}\n`);
-                            } else {
-                                console.log(`DM ${currentUser} -> ${currentDMUser}: ${trimmed}`);
-                                client.write(`DMMSG ${trimmed}\n`);
-                            }
-                        } else {
-                            console.log(`${currentUser}: ${trimmed}`);
-                            client.write(trimmed + '\n');
-                        }
-                    }
-                }
-                rl.prompt();
-            });
-            rl.setPrompt('> ');
-            rl.prompt();
-        }
-    }
-
-    if (!authenticated && message.startsWith('OK Registered')) {
-        console.log('Account created. Please log in now.');
-        askAuthOrRegister();
-    }
-
-    if (!authenticated && message.startsWith('ERROR')) {
-        console.log('Server error:', message);
-        askAuthOrRegister();
-    }
+client.on('data', (data) => {
+    const text = data.toString();
+    const lines = text.split(/\r?\n/).filter(line => line.length > 0);
+    lines.forEach(line => processMessage(line));
 });
 
 function askAuthOrRegister() {
