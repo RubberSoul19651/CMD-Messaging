@@ -19,11 +19,11 @@ const loggedInUsers = new Map();
 function loadConfig() {
     const defaults = {
         serverPort: 5190,
-        serverHost: '0.0.0.0',
+        serverHost: 'placeholder',
         clientHost: 'placeholder',
         clientPort: 5190,
         webPort: 8080,
-        webHost: '0.0.0.0'
+        webHost: 'placeholder'
     };
 
     try {

@@ -26,7 +26,7 @@ client.connect(config.clientPort, config.clientHost, () => {
 function loadConfig() {
     const defaults = {
         serverPort: 5190,
-        serverHost: '0.0.0.0',
+        serverHost: 'placeholder',
         clientHost: 'placeholder',
         clientPort: 5190
     };

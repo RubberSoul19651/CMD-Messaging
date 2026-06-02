@@ -2,5 +2,7 @@
   "serverPort": 5190,
   "serverHost": "placeholder",
   "clientHost": "placeholder",
-  "clientPort": 5190
+  "clientPort": 5190,
+  "webPort": 8080,
+  "webHost": "placeholder"
 }
