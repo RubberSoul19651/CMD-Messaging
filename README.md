@@ -9,8 +9,8 @@ Public Chat with all users,
 Friends,
 Saving previous sessions,
 Account Registration (very basic but functional),
-Web Client that can be accessed on all devices,
+Web Client that can be accessed on all devices
 
-IMPORTANT
-To run the server, you must first configure the command prompt/terminal client and the server using config.json or the server will not run properly. For now, the web client is hosted by default on port 8080 and cannot be changed
+IMPORTANT:
+To run the server, you must first configure the command prompt/terminal client and the server using config.json or the server will not run properly. For now, the web client is hosted by default on port 8080 and cannot be changed.
 Then in the directory containing the source code, open a command prompt and type npm install in order to install the dependencies required for the server to run. 
