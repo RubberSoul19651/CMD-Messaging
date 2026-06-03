@@ -1,4 +1,4 @@
-TODO: I am currently working on building a client that will run on Windows 9x and Windows 2000 since Node.js (v4.9.1) will not work at all on 9x and only works on Windows 2000 via extended kernel.
+TODO: I am currently working on building a client that will run on Windows 9x and Windows 2000 since Node.js (v4.9.1) will not work at all on 9x and only works on Windows 2000 via extended kernel but even then it will not connect to the server due to Windows 2000 network limitations.
 
 This is a really basic messaging server and client that you can host on your own computer. The server can be connected to via the web client or the command prompt/terminal client which is prefered for use on older operating systems.
 CMDandWeb-Messaging is supported on Windows XP-11 and requires Node.js v5.12.0 at minimum to run. 
