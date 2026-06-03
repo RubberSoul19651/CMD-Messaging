@@ -1,5 +1,5 @@
 This is a really basic messaging server and client that you can host on your own computer. The server can be connected to via the web client or the command prompt/terminal client which is prefered for use on older operating systems.
-CMDandWeb-Messaging is supported on Windows 9x- Windows 11 and requires Node.js v5.12.0 at minimum to run. 
+CMDandWeb-Messaging is supported on Windows 9x & 2000 - Windows 11 and requires Node.js v5.12.0 (XP and Above) at minimum to run. 
 You can build an EXE for the server and command prompt/terminal client using the provided build.bat on Windows 10 and 11. Users on Windows XP - Windows 8.1 will most likely need to use run-server.bat and run-client.bat to run both the server and or client since build.bat will fail to run completely on those operating systems.
 
 Windows 95/98/ME command-line client:
