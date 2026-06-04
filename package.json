@@ -7,6 +7,7 @@
     "build:server": "pkg server.js --targets node18-win-x64 --output server.exe",
     "build:client": "pkg client.js --targets node18-win-x64 --output client.exe",
     "build:legacy-client": "build-legacy-client-win9x.bat",
+    "build:dos-client": "build-dos.bat",
     "build": "npm run build:server && npm run build:client"
   },
   "devDependencies": {

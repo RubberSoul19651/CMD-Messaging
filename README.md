@@ -1,5 +1,5 @@
 This is a really basic messaging server and client that you can host on your own computer. The server can be connected to via the web client or the command prompt/terminal client which is prefered for use on older operating systems.
-CMDandWeb-Messaging is supported on Windows 9x & 2000 - Windows 11 and requires Node.js v5.12.0 (XP and Above) at minimum to run. 
+CMDandWeb-Messaging is supported on Windows 9x- Windows 11 and requires Node.js v5.12.0 at minimum to run. 
 You can build an EXE for the server and command prompt/terminal client using the provided build.bat on Windows 10 and 11. Users on Windows XP - Windows 8.1 will most likely need to use run-server.bat and run-client.bat to run both the server and or client since build.bat will fail to run completely on those operating systems.
 
 Windows 95/98/ME command-line client:
@@ -11,9 +11,25 @@ Open Watcom: wcl386 -q -bt=nt -l=nt legacy-client-win9x.c wsock32.lib -fe=legacy
 MinGW: gcc -O2 -Wall -o legacy-client-win9x.exe legacy-client-win9x.c -lwsock32
 
 The legacy client reads clientHost and clientPort from config.json. You can also run it with a host and port directly:
-legacy-client-win9x.exe 192.168.1.50 5190
+legacy-client-win9x.exe iphere 5190
 
 Make sure TCP/IP and Winsock are installed on the Windows 9x machine, and use the server computer's LAN IP address in clientHost instead of "localhost" unless the server is running on the same Windows 9x computer.
+
+MS-DOS 6.22 command-line client:
+MS-DOS does not include TCP/IP or Winsock, so the DOS client uses a packet driver plus the Watt-32 TCP/IP library. The DOS-specific source is dosclient.c and it builds to DOSCHAT.EXE. DOSCHAT.EXE reads DOSCHAT.CFG instead of config.json because MS-DOS 6.22 only supports 8.3 filenames.
+
+To build it with Open Watcom, install/build Watt-32, set WATT_ROOT to your Watt-32 folder, and run:
+build-dos.bat
+
+If your Watt-32 build uses a different library filename or memory model, edit the library path in build-dos.bat. After building, copy DOSCHAT.EXE and DOSCHAT.CFG to the MS-DOS machine. Edit DOSCHAT.CFG so HOST is the LAN IP address of the computer running server.js:
+HOST=iphere
+PORT=5190
+
+On the MS-DOS computer, load your network card packet driver and make sure Watt-32 can find WATTCP.CFG before running the client. You can then start it with:
+DOSCHAT
+
+Or override the config file from the command line:
+DOSCHAT iphere 5190
 
 Features (as of now):
 Direct Messaging, 
